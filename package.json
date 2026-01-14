@@ -1,0 +1,19 @@
+{
+  "name": "oauth-kit",
+  "version": "1.0.0",
+  "description": "Universal OAuth component kit for Despia Native SDK",
+  "type": "module",
+  "scripts": {
+    "demo:provider": "cd demo-provider && npm run dev",
+    "demo:dev": "cd demo && npm run dev",
+    "demo:build": "cd demo && npm run build"
+  },
+  "keywords": [
+    "oauth",
+    "despia",
+    "native",
+    "authentication"
+  ],
+  "author": "",
+  "license": "MIT"
+}
