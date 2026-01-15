@@ -14,55 +14,28 @@ export class ClientSideMockProvider implements OAuthProvider {
   }
 
   async getOAuthUrl(provider: string, redirectUri: string, state: string): Promise<string> {
-    // Simulate OAuth authorization URL
-    // In a real app, this would redirect to the provider's authorization endpoint
-    // For client-side demo, we'll use a custom protocol that we handle
+    // For client-side demo, simulate OAuth by directly returning the callback URL
+    // with the authorization code already embedded
+    // This simulates the provider redirecting back after approval
     
-    // Store the redirect info in sessionStorage for the callback
-    if (typeof window !== 'undefined' && typeof sessionStorage !== 'undefined') {
-      sessionStorage.setItem('oauth_demo_redirect_uri', redirectUri);
-      sessionStorage.setItem('oauth_demo_state', state);
-    }
-
-    // Return a URL that will trigger our custom handler
-    // We'll use a data URL that we can intercept
-    const authParams = new URLSearchParams({
-      client_id: this.clientId,
-      redirect_uri: redirectUri,
-      response_type: 'code',
-      scope: 'openid email profile',
-      state: state,
-      // Custom parameter to identify this as a client-side demo
-      _demo: 'client-side',
-    });
-
-    // For client-side demo, we simulate the authorization by:
-    // 1. Showing a mock authorization page (or auto-approving)
-    // 2. Generating a code
-    // 3. Redirecting to the callback URL
-
     // Generate a mock authorization code
     const mockCode = this.generateMockCode();
     
-    // Store code temporarily
+    // Store state for verification (optional, but good practice)
     if (typeof window !== 'undefined' && typeof sessionStorage !== 'undefined') {
-      sessionStorage.setItem('oauth_demo_code', mockCode);
+      sessionStorage.setItem(`oauth_state_${state}`, JSON.stringify({
+        state,
+        timestamp: Date.now(),
+      }));
     }
 
-    // Simulate the authorization redirect
-    // Instead of redirecting immediately, we'll simulate user approval
-    // and redirect after a short delay to show the flow
+    // Return the redirect URI with code and state - this simulates the OAuth provider
+    // redirecting back after the user approves the authorization
+    const callbackUrl = new URL(redirectUri);
+    callbackUrl.searchParams.set('code', mockCode);
+    callbackUrl.searchParams.set('state', state);
     
-    // For demo purposes, auto-approve and redirect
-    setTimeout(() => {
-      const redirectUrl = new URL(redirectUri);
-      redirectUrl.searchParams.set('code', mockCode);
-      redirectUrl.searchParams.set('state', state);
-      window.location.href = redirectUrl.toString();
-    }, 500);
-
-    // Return a placeholder URL (not actually used since we redirect above)
-    return `${redirectUri}?${authParams.toString()}`;
+    return callbackUrl.toString();
   }
 
   async handleCallback(params: Record<string, string>): Promise<AuthResult> {
