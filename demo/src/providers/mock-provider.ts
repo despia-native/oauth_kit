@@ -11,14 +11,12 @@ const getProviderBaseUrl = (): string => {
     return import.meta.env.VITE_PROVIDER_URL;
   }
   
-  // For production, use the deployed provider URL from environment variable
+  // For production, require the environment variable
   if (import.meta.env.MODE === 'production') {
-    // If VITE_PROVIDER_URL is not set, show a helpful error
-    const host = typeof window !== 'undefined' ? window.location.host : '';
-    console.warn('VITE_PROVIDER_URL not set. The demo provider server must be deployed separately.');
-    // Return a placeholder that will fail gracefully
-    // In production, VITE_PROVIDER_URL should be set in Netlify environment variables
-    return `https://your-provider-service.com/demo/provider`; // Update via VITE_PROVIDER_URL env var
+    // If VITE_PROVIDER_URL is not set in production, throw an error
+    console.error('VITE_PROVIDER_URL environment variable is not set. Please set it in Netlify dashboard.');
+    // Return empty string to fail fast and show the error
+    throw new Error('VITE_PROVIDER_URL environment variable must be set in production. Please configure it in Netlify dashboard: Site settings → Environment variables → Add VITE_PROVIDER_URL');
   }
   
   // Development - use localhost
