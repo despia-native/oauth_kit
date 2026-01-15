@@ -390,6 +390,541 @@ export class MyProvider implements OAuthProvider {
 
 See [Provider Implementation Patterns](#provider-implementation-patterns) below for different approaches (direct callback, server-side callback, edge functions).
 
+## Production-Ready Examples
+
+### Example 1: Supabase Authentication (Frontend + Backend)
+
+Complete production example using Supabase for OAuth authentication.
+
+**Frontend Setup:**
+
+```tsx
+// src/providers/supabase-provider.ts
+import type { OAuthProvider, AuthResult, TokenSet, Session, User } from '@oauth-kit/core';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+
+export class SupabaseProvider implements OAuthProvider {
+  private supabase: SupabaseClient;
+
+  constructor(supabaseUrl: string, supabaseAnonKey: string) {
+    this.supabase = createClient(supabaseUrl, supabaseAnonKey);
+  }
+
+  async getOAuthUrl(provider: string, redirectUri: string, state: string): Promise<string> {
+    // Supabase handles the OAuth URL generation
+    // redirectUri is where Supabase will redirect after authentication
+    const { data, error } = await this.supabase.auth.signInWithOAuth({
+      provider: provider as any, // 'google', 'github', 'apple', etc.
+      options: {
+        redirectTo: redirectUri, // Final client-side destination
+      },
+    });
+
+    if (error) throw error;
+    if (!data.url) throw new Error('Failed to get OAuth URL');
+
+    return data.url;
+  }
+
+  async handleCallback(params: Record<string, string>): Promise<AuthResult> {
+    // Supabase automatically handles the callback
+    // Extract code from params
+    const code = params.code;
+    if (!code) {
+      throw new Error('No authorization code in callback');
+    }
+
+    // Exchange code for session using Supabase
+    const { data, error } = await this.supabase.auth.exchangeCodeForSession(code);
+
+    if (error) throw error;
+    if (!data.session) throw new Error('Failed to create session');
+
+    // Get user info
+    const user = data.user;
+
+    return {
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+      expires_in: data.session.expires_in,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.user_metadata?.full_name || user.email,
+        picture: user.user_metadata?.avatar_url,
+      },
+    };
+  }
+
+  async setSession(tokens: TokenSet): Promise<void> {
+    // Supabase manages session automatically via cookies/localStorage
+    // Just refresh the session to ensure it's up to date
+    await this.supabase.auth.refreshSession();
+  }
+
+  async getSession(): Promise<Session | null> {
+    const { data: { session }, error } = await this.supabase.auth.getSession();
+    
+    if (error || !session) return null;
+
+    return {
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+      expires_at: session.expires_at ? session.expires_at * 1000 : undefined,
+      user: {
+        id: session.user.id,
+        email: session.user.email,
+        name: session.user.user_metadata?.full_name || session.user.email,
+        picture: session.user.user_metadata?.avatar_url,
+      },
+    };
+  }
+
+  async signOut(): Promise<void> {
+    await this.supabase.auth.signOut();
+  }
+}
+```
+
+**Use in your app:**
+
+```tsx
+// src/App.tsx
+import { OAuthProvider } from '@oauth-kit/react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { SupabaseProvider } from './providers/supabase-provider';
+import { HomePage } from './pages/HomePage';
+import { AuthPage } from './pages/AuthPage';
+import { CallbackPage } from './pages/CallbackPage';
+import { NativeCallbackPage } from './pages/NativeCallbackPage';
+
+const supabaseProvider = new SupabaseProvider(
+  process.env.REACT_APP_SUPABASE_URL!,
+  process.env.REACT_APP_SUPABASE_ANON_KEY!
+);
+
+function App() {
+  return (
+    <OAuthProvider
+      config={{
+        appUrl: window.location.origin,
+        deeplinkScheme: 'myapp',
+        provider: supabaseProvider,
+      }}
+    >
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/auth" element={<AuthPage />} />
+          <Route path="/auth/callback" element={<CallbackPage />} />
+          <Route path="/native-callback" element={<NativeCallbackPage />} />
+        </Routes>
+      </BrowserRouter>
+    </OAuthProvider>
+  );
+}
+```
+
+**Backend Configuration (Supabase Dashboard):**
+
+1. Go to Authentication → URL Configuration
+2. Add redirect URLs:
+   - `https://yourdomain.com/auth/callback` (web)
+   - `https://yourdomain.com/native-callback` (native)
+   - `myapp://oauth/auth/callback` (native deeplink)
+
+### Example 2: Google OAuth (Direct Frontend)
+
+Production example using Google OAuth directly from the frontend:
+
+```tsx
+// src/providers/google-provider.ts
+import type { OAuthProvider, AuthResult, TokenSet, Session, User } from '@oauth-kit/core';
+
+export class GoogleProvider implements OAuthProvider {
+  private clientId: string;
+  private clientSecret?: string; // Optional, only if using backend for token exchange
+
+  constructor(config: { clientId: string; clientSecret?: string }) {
+    this.clientId = config.clientId;
+    this.clientSecret = config.clientSecret;
+  }
+
+  async getOAuthUrl(provider: string, redirectUri: string, state: string): Promise<string> {
+    const params = new URLSearchParams({
+      client_id: this.clientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'openid email profile',
+      access_type: 'offline',
+      prompt: 'consent',
+      state: state,
+    });
+
+    return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+  }
+
+  async handleCallback(params: Record<string, string>): Promise<AuthResult> {
+    if (params.error) {
+      throw new Error(params.error_description || params.error);
+    }
+
+    const code = params.code;
+    if (!code) {
+      throw new Error('No authorization code in callback');
+    }
+
+    // Exchange code for tokens
+    // NOTE: In production, do this on your backend to protect client_secret
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: this.clientId,
+        client_secret: this.clientSecret || '',
+        redirect_uri: params.redirect_uri || window.location.origin + '/auth/callback',
+        grant_type: 'authorization_code',
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      const error = await tokenResponse.json();
+      throw new Error(error.error_description || 'Token exchange failed');
+    }
+
+    const tokens = await tokenResponse.json();
+
+    // Fetch user info
+    const userResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+
+    if (!userResponse.ok) {
+      throw new Error('Failed to fetch user info');
+    }
+
+    const userData = await userResponse.json();
+
+    return {
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      expires_in: tokens.expires_in,
+      user: {
+        id: userData.id,
+        email: userData.email,
+        name: userData.name,
+        picture: userData.picture,
+      },
+    };
+  }
+
+  async setSession(tokens: TokenSet): Promise<void> {
+    // Store in localStorage (or send to your backend)
+    localStorage.setItem('oauth_access_token', tokens.access_token);
+    if (tokens.refresh_token) {
+      localStorage.setItem('oauth_refresh_token', tokens.refresh_token);
+    }
+    if (tokens.expires_in) {
+      const expiresAt = Date.now() + tokens.expires_in * 1000;
+      localStorage.setItem('oauth_expires_at', expiresAt.toString());
+    }
+  }
+
+  async getSession(): Promise<Session | null> {
+    const accessToken = localStorage.getItem('oauth_access_token');
+    if (!accessToken) return null;
+
+    // Optionally refresh token if expired
+    const expiresAt = localStorage.getItem('oauth_expires_at');
+    if (expiresAt && parseInt(expiresAt, 10) < Date.now()) {
+      // Refresh token logic here
+      return null;
+    }
+
+    // Fetch current user info
+    try {
+      const userResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (!userResponse.ok) {
+        this.signOut();
+        return null;
+      }
+
+      const userData = await userResponse.json();
+
+      return {
+        access_token: accessToken,
+        refresh_token: localStorage.getItem('oauth_refresh_token') || undefined,
+        expires_at: expiresAt ? parseInt(expiresAt, 10) : undefined,
+        user: {
+          id: userData.id,
+          email: userData.email,
+          name: userData.name,
+          picture: userData.picture,
+        },
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  async signOut(): Promise<void> {
+    localStorage.removeItem('oauth_access_token');
+    localStorage.removeItem('oauth_refresh_token');
+    localStorage.removeItem('oauth_expires_at');
+  }
+}
+```
+
+**⚠️ Security Note**: For production, always exchange the code for tokens on your backend to protect your `client_secret`. See Example 3 below.
+
+### Example 3: Backend Token Exchange (Secure Production Pattern)
+
+For production, always exchange authorization codes for tokens on your backend:
+
+```tsx
+// src/providers/google-backend-provider.ts
+import type { OAuthProvider, AuthResult, TokenSet, Session, User } from '@oauth-kit/core';
+
+export class GoogleBackendProvider implements OAuthProvider {
+  private clientId: string;
+  private backendUrl: string;
+
+  constructor(config: { clientId: string; backendUrl: string }) {
+    this.clientId = config.clientId;
+    this.backendUrl = config.backendUrl;
+  }
+
+  async getOAuthUrl(provider: string, redirectUri: string, state: string): Promise<string> {
+    const params = new URLSearchParams({
+      client_id: this.clientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'openid email profile',
+      access_type: 'offline',
+      prompt: 'consent',
+      state: state,
+    });
+
+    return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+  }
+
+  async handleCallback(params: Record<string, string>): Promise<AuthResult> {
+    if (params.error) {
+      throw new Error(params.error_description || params.error);
+    }
+
+    const code = params.code;
+    if (!code) {
+      throw new Error('No authorization code in callback');
+    }
+
+    // Exchange code for tokens via YOUR BACKEND
+    // Backend securely handles client_secret
+    const response = await fetch(`${this.backendUrl}/api/oauth/exchange`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        code,
+        provider: 'google',
+        redirect_uri: params.redirect_uri,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Token exchange failed');
+    }
+
+    const data = await response.json();
+
+    return {
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+      expires_in: data.expires_in,
+      user: data.user,
+    };
+  }
+
+  async setSession(tokens: TokenSet): Promise<void> {
+    // Option 1: Store in localStorage (client-side only)
+    localStorage.setItem('oauth_access_token', tokens.access_token);
+    if (tokens.refresh_token) {
+      localStorage.setItem('oauth_refresh_token', tokens.refresh_token);
+    }
+
+    // Option 2: Send to backend to store in secure httpOnly cookies
+    await fetch(`${this.backendUrl}/api/auth/session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(tokens),
+    });
+  }
+
+  async getSession(): Promise<Session | null> {
+    // Option 1: Get from localStorage
+    // Option 2: Get from backend (more secure)
+    const response = await fetch(`${this.backendUrl}/api/auth/session`, {
+      credentials: 'include',
+    });
+
+    if (!response.ok) return null;
+
+    const session = await response.json();
+    return session;
+  }
+
+  async signOut(): Promise<void> {
+    localStorage.removeItem('oauth_access_token');
+    localStorage.removeItem('oauth_refresh_token');
+
+    // Also sign out on backend
+    await fetch(`${this.backendUrl}/api/auth/signout`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+  }
+}
+```
+
+**Backend Example (Node.js/Express):**
+
+```typescript
+// backend/routes/auth.ts
+import express from 'express';
+import { google } from 'googleapis';
+
+const router = express.Router();
+
+// Exchange code for tokens
+router.post('/oauth/exchange', async (req, res) => {
+  const { code, provider, redirect_uri } = req.body;
+
+  if (provider === 'google') {
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET, // Securely stored on backend
+      redirect_uri
+    );
+
+    try {
+      const { tokens } = await oauth2Client.getToken(code);
+      
+      // Get user info
+      oauth2Client.setCredentials(tokens);
+      const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
+      const userInfo = await oauth2.userinfo.get();
+
+      // Store session (in database, Redis, etc.)
+      // ...
+
+      res.json({
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        expires_in: tokens.expiry_date ? Math.floor((tokens.expiry_date - Date.now()) / 1000) : undefined,
+        user: {
+          id: userInfo.data.id,
+          email: userInfo.data.email,
+          name: userInfo.data.name,
+          picture: userInfo.data.picture,
+        },
+      });
+    } catch (error) {
+      res.status(400).json({ message: 'Token exchange failed' });
+    }
+  }
+});
+
+export default router;
+```
+
+### Example 4: Auth0 Integration
+
+```tsx
+// src/providers/auth0-provider.ts
+import type { OAuthProvider, AuthResult, TokenSet, Session, User } from '@oauth-kit/core';
+import { Auth0Client } from '@auth0/auth0-spa-js';
+
+export class Auth0Provider implements OAuthProvider {
+  private auth0: Auth0Client;
+
+  constructor(domain: string, clientId: string) {
+    this.auth0 = new Auth0Client({
+      domain,
+      clientId,
+      authorizationParams: {
+        redirect_uri: window.location.origin + '/auth/callback',
+      },
+    });
+  }
+
+  async getOAuthUrl(provider: string, redirectUri: string, state: string): Promise<string> {
+    // Auth0 generates the OAuth URL
+    const url = await this.auth0.buildAuthorizeUrl({
+      redirect_uri: redirectUri,
+      state,
+    });
+    return url;
+  }
+
+  async handleCallback(params: Record<string, string>): Promise<AuthResult> {
+    // Auth0 handles callback and code exchange
+    await this.auth0.handleRedirectCallback();
+
+    const user = await this.auth0.getUser();
+    const token = await this.auth0.getTokenSilently();
+
+    if (!user || !token) {
+      throw new Error('Authentication failed');
+    }
+
+    return {
+      access_token: token,
+      expires_in: 86400, // 24 hours
+      user: {
+        id: user.sub,
+        email: user.email,
+        name: user.name,
+        picture: user.picture,
+      },
+    };
+  }
+
+  async setSession(tokens: TokenSet): Promise<void> {
+    // Auth0 manages session automatically
+    // No manual session storage needed
+  }
+
+  async getSession(): Promise<Session | null> {
+    const isAuthenticated = await this.auth0.isAuthenticated();
+    if (!isAuthenticated) return null;
+
+    const user = await this.auth0.getUser();
+    const token = await this.auth0.getTokenSilently();
+
+    if (!user || !token) return null;
+
+    return {
+      access_token: token,
+      user: {
+        id: user.sub,
+        email: user.email,
+        name: user.name,
+        picture: user.picture,
+      },
+    };
+  }
+
+  async signOut(): Promise<void> {
+    await this.auth0.logout();
+  }
+}
+```
+
 ## Provider Implementation Patterns
 
 The OAuth kit supports multiple provider implementation patterns. The `redirectUri` parameter always represents the **final client-side destination** where your app will receive the callback.
