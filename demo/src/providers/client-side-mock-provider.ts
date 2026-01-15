@@ -47,7 +47,9 @@ export class ClientSideMockProvider implements OAuthProvider {
     // Get authorization code
     const code = params.code;
     if (!code) {
-      throw new Error('No authorization code in callback');
+      // Debug: log available params
+      console.error('No authorization code in callback. Available params:', Object.keys(params));
+      throw new Error(`No authorization code in callback. Received params: ${JSON.stringify(params)}`);
     }
 
     // Simulate token exchange (no actual server call needed)
@@ -55,12 +57,19 @@ export class ClientSideMockProvider implements OAuthProvider {
     const mockTokens = this.generateMockTokens();
     const mockUser = this.generateMockUser();
 
-    return {
+    const result: AuthResult = {
       access_token: mockTokens.access_token,
       refresh_token: mockTokens.refresh_token,
       expires_in: mockTokens.expires_in,
       user: mockUser,
     };
+
+    // Ensure all required fields are present
+    if (!result.access_token) {
+      throw new Error('Failed to generate access token');
+    }
+
+    return result;
   }
 
   async setSession(tokens: TokenSet): Promise<void> {

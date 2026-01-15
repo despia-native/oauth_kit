@@ -73,6 +73,11 @@ export function Callback({
         // Handle callback with provider
         const result = await provider.handleCallback(params);
 
+        // Validate result has required fields
+        if (!result || !result.access_token) {
+          throw new Error('Invalid OAuth response: missing access_token');
+        }
+
         // Set session
         await provider.setSession({
           access_token: result.access_token,
