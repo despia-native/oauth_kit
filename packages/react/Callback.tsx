@@ -70,7 +70,30 @@ export function Callback({
           throw new Error(params.error_description || params.error);
         }
 
-        // Handle callback with provider
+        // Check if tokens are already in params (from native deeplink flow)
+        // In native flow, NativeCallback sends tokens via deeplink
+        if (params.access_token) {
+          // Tokens already present - just set session directly
+          await provider.setSession({
+            access_token: params.access_token,
+            refresh_token: params.refresh_token,
+            expires_in: params.expires_in ? parseInt(params.expires_in, 10) : undefined,
+          });
+
+          // Create result for success handler
+          const result: AuthResult = {
+            access_token: params.access_token,
+            refresh_token: params.refresh_token,
+            expires_in: params.expires_in ? parseInt(params.expires_in, 10) : undefined,
+          };
+
+          onSuccess?.(result);
+          navigate(redirectTo, { replace: true });
+          return;
+        }
+
+        // Web flow: exchange code for tokens
+        // Handle callback with provider (expects code in params)
         const result = await provider.handleCallback(params);
 
         // Validate result has required fields
