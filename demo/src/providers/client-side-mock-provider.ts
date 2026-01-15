@@ -42,12 +42,26 @@ export class ClientSideMockProvider implements OAuthProvider {
       throw new Error(params.error_description || params.error);
     }
 
-    // Get authorization code
+    // Support both code flow and implicit flow (hash with access_token)
+    // If access_token is in params (from hash), use it directly
+    if (params.access_token) {
+      // Implicit flow: tokens already in hash from authorization page
+      const mockUser = this.generateMockUser();
+      
+      return {
+        access_token: params.access_token,
+        refresh_token: params.refresh_token,
+        expires_in: params.expires_in ? parseInt(params.expires_in, 10) : 3600,
+        user: mockUser,
+      };
+    }
+
+    // Code flow: exchange code for tokens
     const code = params.code;
     if (!code) {
       // Debug: log available params
-      console.error('No authorization code in callback. Available params:', Object.keys(params));
-      throw new Error(`No authorization code in callback. Received params: ${JSON.stringify(params)}`);
+      console.error('No authorization code or access_token in callback. Available params:', Object.keys(params));
+      throw new Error(`No authorization code or access_token in callback. Received params: ${JSON.stringify(params)}`);
     }
 
     // Simulate token exchange (no actual server call needed)
