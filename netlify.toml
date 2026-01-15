@@ -4,6 +4,15 @@
   command = "npm install && npm run build"
   publish = "dist"
 
+# Environment variables
+# IMPORTANT: You need to deploy the demo provider server separately (it's an Express server)
+# Deploy it to: Render, Railway, Fly.io, or any Node.js hosting service
+# Then set VITE_PROVIDER_URL in Netlify dashboard:
+# Site settings → Environment variables → Add variable
+# Name: VITE_PROVIDER_URL
+# Value: https://your-deployed-provider.com/demo/provider
+# For local development, the provider runs on http://localhost:3001/demo/provider
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
