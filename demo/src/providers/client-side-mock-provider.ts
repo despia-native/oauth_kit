@@ -14,12 +14,9 @@ export class ClientSideMockProvider implements OAuthProvider {
   }
 
   async getOAuthUrl(provider: string, redirectUri: string, state: string): Promise<string> {
-    // For client-side demo, simulate OAuth by directly returning the callback URL
-    // with the authorization code already embedded
-    // This simulates the provider redirecting back after approval
-    
-    // Generate a mock authorization code
-    const mockCode = this.generateMockCode();
+    // For client-side demo, return URL to authorization page
+    // The authorization page will show "Login as Demo User" button
+    // When clicked, it redirects to redirectUri with tokens in hash
     
     // Store state for verification (optional, but good practice)
     if (typeof window !== 'undefined' && typeof sessionStorage !== 'undefined') {
@@ -29,13 +26,14 @@ export class ClientSideMockProvider implements OAuthProvider {
       }));
     }
 
-    // Return the redirect URI with code and state - this simulates the OAuth provider
-    // redirecting back after the user approves the authorization
-    const callbackUrl = new URL(redirectUri);
-    callbackUrl.searchParams.set('code', mockCode);
-    callbackUrl.searchParams.set('state', state);
+    // Return URL to the authorization page
+    // In production, this would be your OAuth provider's authorization endpoint
+    const authUrl = new URL('/oauth-authorize.html', window.location.origin);
+    authUrl.searchParams.set('redirect_uri', redirectUri);
+    authUrl.searchParams.set('state', state);
+    authUrl.searchParams.set('response_type', 'token'); // Implicit flow with hash
     
-    return callbackUrl.toString();
+    return authUrl.toString();
   }
 
   async handleCallback(params: Record<string, string>): Promise<AuthResult> {

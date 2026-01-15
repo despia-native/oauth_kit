@@ -61,7 +61,8 @@ export function NativeCallback({
           params[key] = value;
         });
 
-        // Hash params (some providers use hash)
+        // Hash params (many OAuth providers use hash for implicit flow)
+        // Extract access_token, token_type, expires_in, etc. from hash
         if (typeof window !== 'undefined' && window.location.hash) {
           const hashParams = new URLSearchParams(window.location.hash.substring(1));
           hashParams.forEach((value, key) => {
