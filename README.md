@@ -1,23 +1,30 @@
-# OAuth Kit for Despia Native Apps
+# Despia OAuth Kit
 
-Universal OAuth component kit for Despia Native SDK. Handles OAuth authentication flows in native mobile apps wrapped with Despia, automatically managing the complex native browser session handling.
+> **OAuth is hard. It's harder on native apps. But Despia makes it easier using web native technology, and this package makes it even easier.**
 
-## Why Do I Need This?
+Universal OAuth component kit for Despia Native SDK. Drop-in React components and hooks that handle OAuth authentication flows seamlessly in both web browsers and Despia native apps, automatically managing complex native browser session handling.
 
-**The Problem**: When you wrap your web app as a native iOS/Android app using Despia, OAuth authentication breaks because:
+[![npm version](https://img.shields.io/npm/v/@oauth-kit/react.svg)](https://www.npmjs.com/package/@oauth-kit/react)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+## Why Despia OAuth Kit?
+
+**The Problem**: OAuth authentication is complex, especially when wrapping your web app as a native iOS/Android app using Despia:
 
 - Your app runs in a **WebView** (embedded browser)
 - WebViews **cannot handle OAuth redirects properly**
 - OAuth providers redirect back to URLs, but the WebView doesn't know what to do
 - Standard web OAuth flows fail silently or get stuck
+- Native browser sessions (ASWebAuthenticationSession/Chrome Custom Tabs) require complex deeplink handling
 
-**The Solution**: This kit automatically:
-- Detects when running in a Despia native app
-- Opens OAuth in a secure native browser session (ASWebAuthenticationSession on iOS, Chrome Custom Tabs on Android)
-- Handles the callback and closes the browser session properly
-- Sets the session in your WebView so authentication persists
+**The Solution**: Despia OAuth Kit automatically:
+- ✅ Detects when running in a Despia native app
+- ✅ Opens OAuth in a secure native browser session (ASWebAuthenticationSession on iOS, Chrome Custom Tabs on Android)
+- ✅ Handles the callback and closes the browser session properly via deeplinks
+- ✅ Sets the session in your WebView so authentication persists
+- ✅ Works seamlessly in both web browsers and native apps with the same code
 
-**When You Need This**: If you're building a web app that will be wrapped as a native app with Despia and you want OAuth login (Google, Apple, GitHub, custom providers, etc.), you need this kit.
+**When You Need This**: If you're building a web app that will be wrapped as a native app with Despia and you want OAuth login (Google, Apple, GitHub, Supabase, Auth0, custom providers, etc.), you need this kit.
 
 ### The Flow Without This Kit (Broken)
 
@@ -50,20 +57,45 @@ User clicks "Sign in"
   → ✅ Session set in WebView, user logged in
 ```
 
-## Quick Summary
+## Installation
 
-**What it does**: Provides drop-in React components and a standardized OAuth flow that works in both web browsers and Despia native apps.
-
-**When to use it**: Any OAuth provider in a React app that will be wrapped as a native app with Despia.
-
-**Installation**: 
 ```bash
 npm install @oauth-kit/react @oauth-kit/core
+# or
+yarn add @oauth-kit/react @oauth-kit/core
+# or
+pnpm add @oauth-kit/react @oauth-kit/core
 ```
+
+## Features
+
+- 🚀 **Universal**: Works in web browsers and Despia native apps with the same code
+- 🔒 **Secure**: Uses native browser sessions (ASWebAuthenticationSession/Chrome Custom Tabs) for secure OAuth flows
+- 🎯 **Provider Agnostic**: Works with any OAuth provider (Google, Apple, GitHub, Supabase, Auth0, custom, etc.)
+- ⚡ **Zero Config**: Standardized routes and callbacks - just add two routes and you're done
+- 🎨 **React First**: Drop-in components and hooks for React apps
+- 📦 **Framework Agnostic Core**: Core library works with any framework
+- 🔄 **Automatic Detection**: Automatically detects native environment and handles flows accordingly
+
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Detailed Setup Guide](#detailed-setup-guide)
+- [API Reference](#api-reference)
+- [Production-Ready Examples](#production-ready-examples)
+  - [Supabase Authentication](#example-1-supabase-authentication-frontend--backend)
+  - [Google OAuth (Direct Frontend)](#example-2-google-oauth-direct-frontend)
+  - [Backend Token Exchange](#example-3-backend-token-exchange-secure-production-pattern)
+  - [Auth0 Integration](#example-4-auth0-integration)
+- [Creating a Provider](#creating-a-provider)
+- [Provider Implementation Patterns](#provider-implementation-patterns)
+- [For AI Coding Agents](#for-ai-coding-agents)
+- [Troubleshooting](#troubleshooting)
+- [Architecture](#architecture)
 
 ## Quick Start
 
-### Minimal Setup (3 Steps)
+Get OAuth working in your Despia app in 3 simple steps:
 
 **Step 1**: Wrap your app with `OAuthProvider`
 
@@ -126,14 +158,44 @@ export function NativeCallbackPage() {
 
 **That's it!** Now you can use `useOAuth()` hook anywhere in your app.
 
+### Using OAuth in Your Components
+
+```tsx
+// src/pages/LoginPage.tsx
+import { useOAuth } from '@oauth-kit/react';
+
+export function LoginPage() {
+  const { signIn, isLoading, session, signOut, isAuthenticated } = useOAuth();
+
+  if (isAuthenticated) {
+    return (
+      <div>
+        <p>Welcome, {session?.user?.email}!</p>
+        <button onClick={signOut}>Sign Out</button>
+      </div>
+    );
+  }
+
+  return (
+    <button onClick={() => signIn('google')} disabled={isLoading}>
+      {isLoading ? 'Signing in...' : 'Sign in with Google'}
+    </button>
+  );
+}
+```
+
 ## Detailed Setup Guide
 
 ### Step 1: Install the Package
+
+Already done? Skip to [Step 2](#step-2-choose-or-create-a-provider).
 
 ```bash
 npm install @oauth-kit/react @oauth-kit/core
 # or
 yarn add @oauth-kit/react @oauth-kit/core
+# or
+pnpm add @oauth-kit/react @oauth-kit/core
 ```
 
 ### Step 2: Choose or Create a Provider
@@ -240,29 +302,98 @@ export function NativeCallbackPage() {
 
 ### Step 6: Use OAuth in Your App
 
-Use the `useOAuth()` hook anywhere in your app:
+See the [Quick Start](#quick-start) section above for an example of using the `useOAuth()` hook.
 
-```tsx
-// src/pages/LoginPage.tsx
-import { useOAuth } from '@oauth-kit/react';
+## API Reference
 
-export function LoginPage() {
-  const { signIn, isLoading, session, signOut, isAuthenticated } = useOAuth();
+### Hooks
 
-  if (isAuthenticated) {
-    return (
-      <div>
-        <p>Welcome, {session?.user?.email}!</p>
-        <button onClick={signOut}>Sign Out</button>
-      </div>
-    );
-  }
+#### `useOAuth()`
 
-  return (
-    <button onClick={() => signIn('google')} disabled={isLoading}>
-      {isLoading ? 'Signing in...' : 'Sign in with Google'}
-    </button>
-  );
+Main hook for OAuth functionality. Returns:
+
+```typescript
+{
+  signIn: (provider: string) => Promise<void>;
+  signOut: () => Promise<void>;
+  session: Session | null;
+  isLoading: boolean;
+  isAuthenticated: boolean;
+}
+```
+
+#### `useOAuthManager()`
+
+Access the underlying `OAuthManager` instance:
+
+```typescript
+const manager = useOAuthManager();
+```
+
+#### `useOAuthSession()`
+
+Get current session only:
+
+```typescript
+const session = useOAuthSession();
+```
+
+### Components
+
+#### `<OAuthProvider>`
+
+Context provider that wraps your app. Required.
+
+**Props:**
+- `config`: `OAuthKitConfig`
+  - `appUrl`: Your app's base URL
+  - `deeplinkScheme`: Your Despia app's deeplink scheme (e.g., 'myapp')
+  - `provider`: Your OAuth provider instance
+
+#### `<Callback>`
+
+Web OAuth callback handler component. Use on `/auth/callback` route.
+
+**Props:**
+- `provider`: OAuth provider instance
+- `redirectTo`: Where to redirect after successful login (default: '/')
+- `onSuccess`: Optional callback when authentication succeeds
+- `onError`: Optional callback when authentication fails
+
+#### `<NativeCallback>`
+
+Native OAuth callback handler component. Use on `/native-callback` route.
+
+**Props:**
+- `provider`: OAuth provider instance
+- `deeplinkScheme`: Your Despia app's deeplink scheme (must match config)
+- `exitPath`: Path to redirect to in WebView after deeplink (default: '/auth/callback')
+- `onSuccess`: Optional callback when authentication succeeds
+- `onError`: Optional callback when authentication fails
+
+### Core Types
+
+```typescript
+interface OAuthProvider {
+  getOAuthUrl(provider: string, redirectUri: string, state: string): string | Promise<string>;
+  handleCallback(params: Record<string, string>): Promise<AuthResult>;
+  setSession(tokens: TokenSet): Promise<void>;
+  getSession(): Promise<Session | null>;
+  signOut(): Promise<void>;
+}
+
+interface AuthResult {
+  access_token: string;
+  refresh_token?: string;
+  expires_in?: number;
+  user?: User;
+}
+
+interface Session {
+  access_token: string;
+  refresh_token?: string;
+  expires_at?: number;
+  user?: User;
 }
 ```
 
